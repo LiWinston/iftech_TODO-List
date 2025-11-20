@@ -2,7 +2,8 @@ package cn.bitsleep.tdl.config;
 
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.store.embedding.EmbeddingStore;
-import dev.langchain4j.store.embedding.pgvector.MetadataStorageConfig;
+import dev.langchain4j.store.embedding.pgvector.DefaultMetadataStorageConfig;
+import dev.langchain4j.store.embedding.pgvector.MetadataStorageMode;
 import dev.langchain4j.store.embedding.pgvector.PgVectorEmbeddingStore;
 import jakarta.annotation.PostConstruct;
 import org.redisson.Redisson;
@@ -79,12 +80,16 @@ public class AppConfig {
         // Important: the table must contain at least columns expected by PgVectorEmbeddingStore:
         // id (TEXT/UUID-as-text), embedding (vector(dimension)), text (TEXT), metadata (JSON/JSONB).
         // We disable createTable because JPA will manage DDL.
-        return PgVectorEmbeddingStore.builder()
-                .datasource(dataSource)
+    return PgVectorEmbeddingStore.datasourceBuilder()
+        .datasource(dataSource)
                 .table("todo_item")
                 .dimension(model.dimension())
                 .createTable(false)
-                .metadataStorageConfig(MetadataStorageConfig.combinedJsonb())
+        .metadataStorageConfig(
+            DefaultMetadataStorageConfig.builder()
+                .storageMode(MetadataStorageMode.COMBINED_JSONB)
+                .build()
+        )
                 .build();
     }
 }

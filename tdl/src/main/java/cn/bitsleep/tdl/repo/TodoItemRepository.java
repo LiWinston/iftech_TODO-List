@@ -77,4 +77,29 @@ public interface TodoItemRepository extends JpaRepository<TodoItem, String> {
                       @Param("categoryId") String categoryId,
                       @Param("text") String text,
                       @Param("metadata") String metadata);
+
+    @Modifying
+    @Query(value = """
+            UPDATE todo_item SET
+              embedding = CAST(:vec AS vector),
+              text = :text,
+              metadata = CAST(:metadata AS jsonb)
+            WHERE id = :id AND user_id = :userId
+            """, nativeQuery = true)
+    int updateEmbedding(@Param("id") String id,
+                        @Param("userId") String userId,
+                        @Param("vec") String vectorLiteral,
+                        @Param("text") String text,
+                        @Param("metadata") String metadata);
+
+    @Query(value = """
+            SELECT id, (similarity(title, :q) + similarity(coalesce(description,''), :q)) AS score
+            FROM todo_item
+            WHERE user_id = :userId AND status != 2
+            ORDER BY score DESC
+            LIMIT :n
+            """, nativeQuery = true)
+    List<Object[]> textSearch(@Param("userId") String userId,
+                              @Param("q") String query,
+                              @Param("n") int limit);
 }

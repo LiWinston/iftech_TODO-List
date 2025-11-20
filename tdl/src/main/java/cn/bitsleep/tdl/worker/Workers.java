@@ -85,12 +85,26 @@ public class Workers {
                 metadata.put("categoryId", item.getCategoryId());
                 metadata.put("priority", item.getPriorityLabel());
 
-                // Use EmbeddingStore to upsert embedding & metadata into the same table
-                // Assumes PgVectorEmbeddingStore uses upsert on id conflict.
-                embeddingStore.add(id, embedding, TextSegment.from(text, metadata));
+                // Update embedding/text/metadata into same row using native SQL to avoid accidental DELETE
+                String vecLiteral = toVectorLiteral(embedding.vectorAsList());
+                String mdJson = metadata.toMap().toString().replace('=', ':');
+                repo.updateEmbedding(id, userId, vecLiteral, text, mdJson);
             } catch (Exception e) {
                 log.warn("Failed processing embed job {}", job, e);
             }
         }
+    }
+
+    private String toVectorLiteral(java.util.List<Double> values) {
+        StringBuilder sb = new StringBuilder();
+        sb.append('[');
+        for (int i = 0; i < values.size(); i++) {
+            if (i > 0) sb.append(',');
+            double v = values.get(i);
+            // format compactly
+            sb.append(Double.toString(v));
+        }
+        sb.append(']');
+        return sb.toString();
     }
 }
