@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS todo_item (
     -- LangChain4j PgVectorEmbeddingStore expected columns
     embedding VECTOR(384),
     text TEXT,        -- concatenated content for semantic storage
-    metadata JSONB    -- dynamic metadata for filtering
+  metadata JSONB,   -- dynamic metadata for filtering
+  embedding_id TEXT -- compatibility alias if library expects embedding_id
 );
 
 -- Ensure columns exist when table was created earlier without them
@@ -28,6 +29,9 @@ ALTER TABLE todo_item ADD COLUMN IF NOT EXISTS embedding VECTOR(384);
 ALTER TABLE todo_item ADD COLUMN IF NOT EXISTS text TEXT;
 ALTER TABLE todo_item ADD COLUMN IF NOT EXISTS metadata JSONB;
 ALTER TABLE todo_item ADD COLUMN IF NOT EXISTS trash_purge_at TIMESTAMP NULL;
+ALTER TABLE todo_item ADD COLUMN IF NOT EXISTS embedding_id TEXT;
+UPDATE todo_item SET embedding_id = id WHERE embedding_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_todo_item_embedding_id ON todo_item(embedding_id);
 
 -- Updated_at trigger
 CREATE OR REPLACE FUNCTION set_updated_at()
@@ -42,6 +46,19 @@ DROP TRIGGER IF EXISTS tg_todo_item_updated_at ON todo_item;
 CREATE TRIGGER tg_todo_item_updated_at
 BEFORE UPDATE ON todo_item
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- Keep embedding_id in sync with id
+CREATE OR REPLACE FUNCTION set_embedding_id()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.embedding_id = NEW.id;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS tg_todo_item_embedding_id ON todo_item;
+CREATE TRIGGER tg_todo_item_embedding_id
+BEFORE INSERT OR UPDATE ON todo_item
+FOR EACH ROW EXECUTE FUNCTION set_embedding_id();
 
 -- Indexes for keyset pagination and search
 CREATE INDEX IF NOT EXISTS idx_todo_item_user_created_id ON todo_item (user_id, created_at DESC, id DESC);
