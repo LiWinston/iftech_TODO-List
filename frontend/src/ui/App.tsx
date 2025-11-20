@@ -77,7 +77,13 @@ export default function App() {
       if (cursor.current.createdAt) params.set('cursorCreatedAt', cursor.current.createdAt)
       if (cursor.current.id) params.set('cursorId', cursor.current.id)
       const data: Todo[] = await fetchJson(`/api/todos?${params.toString()}`)
-      setTodos(prev => [...prev, ...data])
+      // 去重合并：避免在开发模式（React StrictMode）或偶发重复请求时列表重复展示
+      setTodos(prev => {
+        if (prev.length === 0) return data
+        const exists = new Set(prev.map(t => t.id))
+        const toAdd = data.filter(t => !exists.has(t.id))
+        return [...prev, ...toAdd]
+      })
       if (data.length > 0) {
         const last = data[data.length - 1]
         cursor.current = { createdAt: last.createdAt, id: last.id }
