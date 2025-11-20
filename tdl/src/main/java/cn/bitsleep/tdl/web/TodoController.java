@@ -105,6 +105,15 @@ public class TodoController {
         return ResponseEntity.ok(Map.of("id", id));
     }
 
+    // 为前端当前使用的 POST /{id}/trash 兼容映射（软删除，与 DELETE /{id} 等价）
+    @PostMapping("/{id}/trash")
+    public ResponseEntity<?> trash(@RequestHeader(value = "X-User-ID", required = false) String userHeader,
+                                   @PathVariable String id) {
+        String userId = userIdOrDefault(userHeader);
+        service.softDelete(id, userId);
+        return ResponseEntity.ok(Map.of("id", id));
+    }
+
     @PostMapping("/{id}/restore")
     public ResponseEntity<?> restore(@RequestHeader(value = "X-User-ID", required = false) String userHeader,
                                      @PathVariable String id) {

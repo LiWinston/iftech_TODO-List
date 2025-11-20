@@ -1,6 +1,7 @@
 package cn.bitsleep.tdl.web;
 
 import org.hibernate.StaleObjectStateException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -39,5 +40,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String,Object>> handleGeneric(Exception e) {
         return body(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", e.getMessage());
+    }
+
+    // Spring 6+ 静态资源 / 控制器未匹配的 404，不再冒泡为 500
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Map<String,Object>> handleNotFound(NoResourceFoundException e) {
+        return body(HttpStatus.NOT_FOUND, "NOT_FOUND", e.getMessage());
     }
 }
