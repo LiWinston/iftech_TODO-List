@@ -38,7 +38,10 @@ public class TodoService {
     private static final String EMBED_QUEUE = "tdl:todo:embed";
 
     public List<TodoItem> list(String userId, List<TodoStatus> statuses, Instant cursorCreatedAt, String cursorId, int size) {
-        var codes = statuses.stream().map(s -> s.code).toList();
+        Short[] codes = statuses.stream().map(s -> (short) s.code).toArray(Short[]::new);
+        if (cursorCreatedAt == null || cursorId == null) {
+            return repo.firstPage(userId, codes, size);
+        }
         return repo.keysetPage(userId, codes, cursorCreatedAt, cursorId, size);
     }
 

@@ -29,11 +29,17 @@ public class TodoController {
     private final TodoService service;
 
     private String userIdOrDefault(String header) {
-        if (header != null && !header.isBlank()) return header;
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth != null) return auth.getName();
-        // 匿名模式下默认读取 demo 方便开发演示
-        return "demo";
+        String user = null;
+        if (header != null && !header.isBlank()) user = header;
+        else {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null) user = auth.getName();
+        }
+        // Treat Spring Security anonymous principal as absent
+        if ("anonymousUser".equals(user)) user = null;
+        if (user == null || user.isBlank()) user = "demo"; // 匿名默认 demo
+        if ("demo-user".equals(user)) user = "demo"; // 兼容早期默认用户
+        return user.trim();
     }
 
     @GetMapping
