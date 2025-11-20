@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import com.fasterxml.jackson.annotation.JsonAlias;
 
 import java.util.Map;
 
@@ -16,9 +17,10 @@ public class AuthController {
 
     @PostMapping("/login")
     public Map<String, String> login(@RequestBody LoginReq req) {
-        // 简化：任何 userId 密码均通过并签发 token
-        String token = tokenService.issue(req.getUserId());
-        return Map.of("token", token, "userId", req.getUserId());
+        // 简化：任何 username / userId 密码均通过并签发 token
+        String user = req.getUsername() != null ? req.getUsername() : req.getUserId();
+        String token = tokenService.issue(user);
+        return Map.of("token", token, "userId", user, "username", user);
     }
 
     @GetMapping("/me")
@@ -29,8 +31,13 @@ public class AuthController {
 
     @Data
     public static class LoginReq {
-        private String userId;
+        @JsonAlias({"userId"})
+        private String username; // 统一前端字段
+        private String userId; // 兼容旧字段（可选）
         private String password; // unused demo
+
+        public String getUsername() { return username; }
+        public void setUsername(String username) { this.username = username; }
         public String getUserId() { return userId; }
         public void setUserId(String userId) { this.userId = userId; }
         public String getPassword() { return password; }

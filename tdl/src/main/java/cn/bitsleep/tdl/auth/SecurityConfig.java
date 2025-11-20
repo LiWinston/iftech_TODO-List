@@ -28,15 +28,19 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        http
-                .csrf(csrf -> csrf.disable())
-                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(reg -> reg
-                        .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/todos", "/api/todos/search").permitAll()
-                        .anyRequest().authenticated()
-                )
-                .addFilterBefore(new JwtFilter(tokenService), UsernamePasswordAuthenticationFilter.class);
+    http
+        .cors(c -> {})
+        .csrf(csrf -> csrf.disable())
+        .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+        .authorizeHttpRequests(reg -> reg
+            // 允许登录与用户信息接口 & 预检请求
+            .requestMatchers("/api/auth/login", "/api/auth/me").permitAll()
+            .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+            // 公共只读查询接口
+            .requestMatchers(HttpMethod.GET, "/api/todos", "/api/todos/search").permitAll()
+            .anyRequest().authenticated()
+        )
+        .addFilterBefore(new JwtFilter(tokenService), UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 
