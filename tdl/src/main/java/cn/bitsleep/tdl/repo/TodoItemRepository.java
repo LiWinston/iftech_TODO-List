@@ -20,21 +20,18 @@ public interface TodoItemRepository extends JpaRepository<TodoItem, String> {
             WHERE user_id = :userId
               AND status IN (:statusCodes)
               AND (
-                    (:cursorCreatedAt IS NULL AND :cursorId IS NULL)
-                 OR (created_at < :cursorCreatedAt)
-                 OR (created_at = :cursorCreatedAt AND id < :cursorId)
+                    CAST(:cursorCreatedAt AS TIMESTAMP) IS NULL
+                 OR  created_at < CAST(:cursorCreatedAt AS TIMESTAMP)
+                 OR (created_at = CAST(:cursorCreatedAt AS TIMESTAMP) AND id < :cursorId)
               )
             ORDER BY created_at DESC, id DESC
             LIMIT :size
-            """,
-            nativeQuery = true)
-    List<TodoItem> keysetPage(
-            @Param("userId") String userId,
-            @Param("statusCodes") List<Integer> statusCodes,
-            @Param("cursorCreatedAt") Instant cursorCreatedAt,
-            @Param("cursorId") String cursorId,
-            @Param("size") int size
-    );
+            """, nativeQuery = true)
+    List<TodoItem> keysetPage(@Param("userId") String userId,
+                              @Param("statusCodes") List<Integer> statusCodes,
+                              @Param("cursorCreatedAt") Instant cursorCreatedAt,
+                              @Param("cursorId") String cursorId,
+                              @Param("size") int size);
 
     @Modifying
     @Query(value = """
