@@ -6,6 +6,8 @@ import cn.bitsleep.tdl.repo.TodoItemRepository;
 import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
+import dev.langchain4j.store.embedding.EmbeddingSearchRequest;
+import dev.langchain4j.store.embedding.EmbeddingSearchResult;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -106,5 +108,42 @@ public class TodoService {
 
     private String buildEmbeddingText(String title, String description) {
         return (title == null ? "" : title) + "\n" + (description == null ? "" : description);
+    }
+
+    public List<TodoItem> hybridSearch(String userId, String query, int k) {
+        // semantic search via embedding store (read-only)
+        var qEmbedding = embeddingModel.embed(query).content();
+        EmbeddingSearchResult<TextSegment> vecRes = embeddingStore.search(
+                EmbeddingSearchRequest.builder()
+                        .queryEmbedding(qEmbedding)
+                        .maxResults(k)
+                        .build()
+        );
+
+        // keyword / trigram search
+        List<Object[]> textRows = repo.textSearch(userId, query, k);
+
+        // collect scores
+        java.util.Map<String, Double> score = new java.util.HashMap<>();
+        double alpha = 0.6; // weight vector score
+        vecRes.matches().forEach(m -> {
+            // cosine similarity: convert from distance if needed; assume score in [0,1]
+            String id = m.embeddingId();
+            double sim = m.score();
+            score.merge(id, alpha * sim, Double::sum);
+        });
+        for (Object[] row : textRows) {
+            String id = (String) row[0];
+            double s = ((Number) row[1]).doubleValue();
+            score.merge(id, (1 - alpha) * s, Double::sum);
+        }
+
+        // fetch items and sort by score
+        java.util.List<TodoItem> items = repo.findAllById(score.keySet()).stream()
+                .filter(it -> userId.equals(it.getUserId()) && it.getStatus() != TodoStatus.TRASHED)
+                .sorted((a,b) -> Double.compare(score.getOrDefault(b.getId(),0.0), score.getOrDefault(a.getId(),0.0)))
+                .limit(k)
+                .toList();
+        return items;
     }
 }

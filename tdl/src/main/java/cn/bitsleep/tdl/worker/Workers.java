@@ -95,12 +95,12 @@ public class Workers {
         }
     }
 
-    private String toVectorLiteral(java.util.List<Double> values) {
+    private String toVectorLiteral(java.util.List<Float> values) {
         StringBuilder sb = new StringBuilder();
         sb.append('[');
         for (int i = 0; i < values.size(); i++) {
             if (i > 0) sb.append(',');
-            double v = values.get(i);
+            float v = values.get(i);
             // format compactly
             sb.append(Double.toString(v));
         }

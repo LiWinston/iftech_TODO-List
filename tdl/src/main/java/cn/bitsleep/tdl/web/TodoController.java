@@ -52,6 +52,14 @@ public class TodoController {
         return service.create(userId, req.title, req.description, req.priorityScore, req.priorityLabel, req.categoryId);
     }
 
+    @GetMapping("/search")
+    public List<TodoItem> search(@RequestHeader(value = "X-User-ID", required = false) String userHeader,
+                                 @RequestParam("q") String q,
+                                 @RequestParam(defaultValue = "20") @Min(1) @Max(200) int k) {
+        String userId = userIdOrDefault(userHeader);
+        return service.hybridSearch(userId, q, k);
+    }
+
     @PutMapping("/{id}")
     public ResponseEntity<?> update(@RequestHeader(value = "X-User-ID", required = false) String userHeader,
                                     @PathVariable String id,
