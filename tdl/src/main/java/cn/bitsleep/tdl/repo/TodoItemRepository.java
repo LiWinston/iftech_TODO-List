@@ -101,14 +101,38 @@ public interface TodoItemRepository extends JpaRepository<TodoItem, String> {
                         @Param("text") String text,
                         @Param("metadata") String metadata);
 
-    @Query(value = """
-            SELECT id, (similarity(title, :q) + similarity(coalesce(description,''), :q)) AS score
-            FROM todo_item
-            WHERE user_id = :userId AND status != 2
-            ORDER BY score DESC
-            LIMIT :n
-            """, nativeQuery = true)
-    List<Object[]> textSearch(@Param("userId") String userId,
-                              @Param("q") String query,
-                              @Param("n") int limit);
+                @Query(value = """
+                                                SELECT
+                                                        id,
+                                                        (
+                                                                -- Title exact / prefix / contains boosts
+                                                                (CASE WHEN title ILIKE :q THEN 0.6
+                                                                                        WHEN title ILIKE (:q || '%') THEN 0.5
+                                                                                        WHEN title ILIKE ('%' || :q || '%') THEN 0.4
+                                                                                        ELSE 0 END)
+                                                                +
+                                                                -- Description exact / prefix / contains boosts
+                                                                (CASE WHEN coalesce(description,'') ILIKE :q THEN 0.3
+                                                                                        WHEN coalesce(description,'') ILIKE (:q || '%') THEN 0.2
+                                                                                        WHEN coalesce(description,'') ILIKE ('%' || :q || '%') THEN 0.1
+                                                                                        ELSE 0 END)
+                                                                +
+                                                                -- Trigram similarities (scaled small, just for tie-breaker)
+                                                                0.20 * similarity(title, :q)
+                                                                + 0.10 * similarity(coalesce(description,''), :q)
+                                                        ) AS score,
+                                                        (title ILIKE :q) AS title_exact,
+                                                        (title ILIKE (:q || '%')) AS title_prefix
+                                                FROM todo_item
+                                                WHERE user_id = :userId AND status != 2
+                                                        AND (
+                                                                title ILIKE ('%' || :q || '%')
+                                                                OR coalesce(description,'') ILIKE ('%' || :q || '%')
+                                                        )
+                                                ORDER BY score DESC
+                                                LIMIT :n
+                                                """, nativeQuery = true)
+                List<Object[]> textSearch(@Param("userId") String userId,
+                                                                                                                        @Param("q") String query,
+                                                                                                                        @Param("n") int limit);
 }

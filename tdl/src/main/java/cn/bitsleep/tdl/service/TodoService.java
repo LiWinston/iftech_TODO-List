@@ -113,8 +113,17 @@ public class TodoService {
     }
 
     public List<TodoItem> hybridSearch(String userId, String query, int k) {
-        // semantic search via embedding store (read-only)
-        var qEmbedding = embeddingModel.embed(query).content();
+        String q = query == null ? "" : query.trim();
+        if (q.isEmpty()) return java.util.Collections.emptyList();
+
+        int qLen = q.codePointCount(0, q.length());
+        // 动态阈值：短查询放宽，长查询提高
+        double semanticMin = qLen < 3 ? 0.0 : 0.55; // 短词不做语义阈值
+        double textMin = qLen < 3 ? 0.0 : 0.20;     // 短词不做文本阈值
+        double alpha = 0.6; // 语义权重
+        double containsBoost = 0.25; // 命中子串加成
+
+        var qEmbedding = embeddingModel.embed(q).content();
         EmbeddingSearchResult<TextSegment> vecRes = embeddingStore.search(
                 EmbeddingSearchRequest.builder()
                         .queryEmbedding(qEmbedding)
@@ -122,26 +131,44 @@ public class TodoService {
                         .build()
         );
 
-        // keyword / trigram search
-        List<Object[]> textRows = repo.textSearch(userId, query, k);
+    List<Object[]> textRows = repo.textSearch(userId, q, k);
 
-        // collect scores
         java.util.Map<String, Double> score = new java.util.HashMap<>();
-        double alpha = 0.6; // weight vector score
+
+        // 语义候选
         vecRes.matches().forEach(m -> {
-            // cosine similarity: convert from distance if needed; assume score in [0,1]
             String id = m.embeddingId();
             double sim = m.score();
-            score.merge(id, alpha * sim, Double::sum);
+            if (sim >= semanticMin) {
+                score.merge(id, alpha * sim, Double::sum);
+            }
         });
+
+        // 文本候选（带 title 优先级增强）
         for (Object[] row : textRows) {
             String id = (String) row[0];
             double s = ((Number) row[1]).doubleValue();
-            score.merge(id, (1 - alpha) * s, Double::sum);
+            boolean titleExact = Boolean.TRUE.equals(row[2]);
+            boolean titlePrefix = Boolean.TRUE.equals(row[3]);
+
+            if (s >= textMin) {
+                double prev = score.getOrDefault(id, 0.0);
+                double boost = containsBoost;
+                if (titleExact) boost += 0.35; // 标题完全匹配强力提升
+                else if (titlePrefix) boost += 0.20; // 标题前缀匹配中度提升
+
+                double combined = prev + (1 - alpha) * s + boost;
+                // 限制上限到 1.5，避免极端叠加
+                if (combined > 1.5) combined = 1.5;
+                score.put(id, combined);
+            }
         }
 
+        // 如果结果过多且查询较长，可进行二次过滤（例如保留前 k）
+        if (score.isEmpty()) return java.util.Collections.emptyList();
+
         // fetch items and sort by score
-        java.util.List<TodoItem> items = repo.findAllById(score.keySet()).stream()
+    java.util.List<TodoItem> items = repo.findAllById(score.keySet()).stream()
                 .filter(it -> userId.equals(it.getUserId()) && it.getStatus() != TodoStatus.TRASHED)
                 .sorted((a,b) -> Double.compare(score.getOrDefault(b.getId(),0.0), score.getOrDefault(a.getId(),0.0)))
                 .limit(k)
