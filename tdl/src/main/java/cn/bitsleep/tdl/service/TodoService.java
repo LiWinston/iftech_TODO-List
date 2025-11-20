@@ -103,6 +103,20 @@ public class TodoService {
         repo.hardDelete(id, userId);
     }
 
+    @Transactional
+    public void purgeIfTrashed(String id, String userId) {
+        // 仅当任务当前处于 TRASHED 状态时才允许物理删除
+        var opt = repo.findById(id);
+        if (opt.isEmpty() || !userId.equals(opt.get().getUserId())) {
+            throw new IllegalArgumentException("Item not found");
+        }
+        var item = opt.get();
+        if (item.getStatus() != TodoStatus.TRASHED) {
+            throw new IllegalStateException("Item not in trash");
+        }
+        repo.hardDelete(id, userId);
+    }
+
     private void enqueueEmbeddingJob(String id, String userId) {
         RQueue<String> queue = redissonClient.getQueue(EMBED_QUEUE);
         queue.offer(userId + ":" + id);

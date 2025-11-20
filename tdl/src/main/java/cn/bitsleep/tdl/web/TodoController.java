@@ -122,6 +122,15 @@ public class TodoController {
         return ResponseEntity.ok(Map.of("id", id));
     }
 
+    // 彻底删除（仅当已在回收站）
+    @PostMapping("/{id}/purge")
+    public ResponseEntity<?> purge(@RequestHeader(value = "X-User-ID", required = false) String userHeader,
+                                   @PathVariable String id) {
+        String userId = userIdOrDefault(userHeader);
+        service.purgeIfTrashed(id, userId);
+        return ResponseEntity.ok(Map.of("id", id, "purged", true));
+    }
+
     @Data
     public static class CreateTodo {
         @NotBlank
