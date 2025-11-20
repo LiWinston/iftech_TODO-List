@@ -80,7 +80,8 @@ public interface TodoItemRepository extends JpaRepository<TodoItem, String> {
             UPDATE todo_item SET
               embedding = CAST(:vec AS vector),
               text = :text,
-              metadata = CAST(:metadata AS jsonb)
+                                                        metadata = CAST(:metadata AS jsonb),
+                                                        version = version + 1
             WHERE id = :id AND user_id = :userId
             """, nativeQuery = true)
     int updateEmbedding(@Param("id") String id,

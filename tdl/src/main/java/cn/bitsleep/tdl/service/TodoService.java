@@ -53,7 +53,6 @@ public class TodoService {
                 .priorityLabel(priorityLabel)
                 .categoryId(categoryId)
                 .statusCode(TodoStatus.ACTIVE.code)
-                .version(0L)
                 .embeddingText(buildEmbeddingText(title, description))
                 .metadata("{}")
                 .build();

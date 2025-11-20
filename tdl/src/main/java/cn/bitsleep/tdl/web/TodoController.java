@@ -9,6 +9,8 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -27,7 +29,11 @@ public class TodoController {
     private final TodoService service;
 
     private String userIdOrDefault(String header) {
-        return (header == null || header.isBlank()) ? "demo-user" : header;
+        if (header != null && !header.isBlank()) return header;
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null) return auth.getName();
+        // 匿名模式下默认读取 demo 方便开发演示
+        return "demo";
     }
 
     @GetMapping

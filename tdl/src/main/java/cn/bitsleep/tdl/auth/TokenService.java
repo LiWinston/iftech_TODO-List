@@ -14,7 +14,6 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class TokenService {
     private final SecretKey key = Keys.secretKeyFor(SignatureAlgorithm.HS256);
-    private final Map<String, String> userTokens = new ConcurrentHashMap<>();
 
     public String issue(String userId) {
         String jws = Jwts.builder()
@@ -23,17 +22,13 @@ public class TokenService {
                 .setExpiration(Date.from(Instant.now().plusSeconds(3600)))
                 .signWith(key)
                 .compact();
-        userTokens.put(userId, jws);
         return jws;
     }
 
     public String validate(String token) {
         try {
-            String sub = Jwts.parserBuilder().setSigningKey(key).build()
+            return Jwts.parserBuilder().setSigningKey(key).build()
                     .parseClaimsJws(token).getBody().getSubject();
-            String stored = userTokens.get(sub);
-            if (stored != null && stored.equals(token)) return sub;
-            return null;
         } catch (Exception e) {
             return null;
         }

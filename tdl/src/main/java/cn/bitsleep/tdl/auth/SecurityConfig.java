@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletRequestWrapper;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -18,6 +19,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.*;
 import java.util.Collections;
 
 @Configuration
@@ -32,6 +34,18 @@ public class SecurityConfig {
         .cors(c -> {})
         .csrf(csrf -> csrf.disable())
         .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+        .exceptionHandling(ex -> ex
+            .authenticationEntryPoint((req, res, e) -> {
+                res.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                res.setContentType("application/json;charset=UTF-8");
+                res.getWriter().write("{\"error\":\"UNAUTHORIZED\"}");
+            })
+            .accessDeniedHandler((req, res, e) -> {
+                res.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                res.setContentType("application/json;charset=UTF-8");
+                res.getWriter().write("{\"error\":\"FORBIDDEN\"}");
+            })
+        )
         .authorizeHttpRequests(reg -> reg
             // 允许登录与用户信息接口 & 预检请求
             .requestMatchers("/api/auth/login", "/api/auth/me").permitAll()
@@ -57,11 +71,37 @@ public class SecurityConfig {
                     UserDetails ud = User.withUsername(userId).password("NOP").authorities(Collections.emptyList()).build();
                     var authToken = new UsernamePasswordAuthenticationToken(ud, token, ud.getAuthorities());
                     SecurityContextHolder.getContext().setAuthentication(authToken);
-                    // propagate user id as header for existing service logic
-                    request.setAttribute("X-User-ID", userId);
+                    // propagate user id as header for existing service logic if header missing
+                    if (request.getHeader("X-User-ID") == null || request.getHeader("X-User-ID").isBlank()) {
+                        request = new MutableHeaderRequest(request, Map.of("X-User-ID", userId));
+                    }
                 }
             }
             filterChain.doFilter(request, response);
+        }
+    }
+
+    static class MutableHeaderRequest extends HttpServletRequestWrapper {
+        private final Map<String, String> extra;
+        MutableHeaderRequest(HttpServletRequest request, Map<String, String> extra) {
+            super(request);
+            this.extra = new HashMap<>(extra);
+        }
+        @Override public String getHeader(String name) {
+            String v = extra.get(name);
+            return v != null ? v : super.getHeader(name);
+        }
+        @Override public Enumeration<String> getHeaderNames() {
+            Set<String> names = new HashSet<>();
+            Enumeration<String> e = super.getHeaderNames();
+            while (e.hasMoreElements()) names.add(e.nextElement());
+            names.addAll(extra.keySet());
+            return Collections.enumeration(names);
+        }
+        @Override public Enumeration<String> getHeaders(String name) {
+            String v = extra.get(name);
+            if (v != null) return Collections.enumeration(List.of(v));
+            return super.getHeaders(name);
         }
     }
 }

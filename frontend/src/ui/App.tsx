@@ -9,6 +9,9 @@ export type Todo = {
   description?: string
   statusCode: number
   createdAt: string
+  priorityScore?: number
+  priorityLabel?: string
+  categoryId?: string
 }
 
 interface PageCursor { createdAt?: string; id?: string }
@@ -25,6 +28,9 @@ export default function App() {
   const [searching, setSearching] = useState(false)
   const [searchResults, setSearchResults] = useState<Todo[]>([])
   const [view, setView] = useState<'list' | 'search'>('list')
+  const [prioScore, setPrioScore] = useState<string>('0')
+  const [prioLabel, setPrioLabel] = useState<string>('')
+  const [category, setCategory] = useState<string>('')
 
   const size = useRef(20)
   const lastScrollTs = useRef<number>(Date.now())
@@ -94,12 +100,21 @@ export default function App() {
 
   const onCreate = useCallback(async () => {
     if (!title.trim()) return
-    const body = { title, description: desc }
+    const body = {
+      title,
+      description: desc || null,
+      priorityScore: prioScore ? Number(prioScore) : 0,
+      priorityLabel: prioLabel || null,
+      categoryId: category || null
+    }
     try {
       const created = await fetchJson('/api/todos', { method: 'POST', body: JSON.stringify(body) }, true) as Todo
       setTodos([created, ...todos])
       setTitle('')
       setDesc('')
+      setPrioScore('0')
+      setPrioLabel('')
+      setCategory('')
     } catch (e) { console.warn(e) }
   }, [title, desc, todos, fetchJson])
 
@@ -163,6 +178,9 @@ export default function App() {
         <section className="create-panel">
           <input className="input" placeholder={token? '新任务标题' : '登录后可添加任务'} value={title} onChange={e=>setTitle(e.target.value)} disabled={!token} />
           <input className="input" placeholder="描述" value={desc} onChange={e=>setDesc(e.target.value)} disabled={!token} />
+          <input className="input" placeholder="优先级分数(0~..)" value={prioScore} onChange={e=>setPrioScore(e.target.value)} disabled={!token} />
+          <input className="input" placeholder="优先级标签(如 High/Low)" value={prioLabel} onChange={e=>setPrioLabel(e.target.value)} disabled={!token} />
+          <input className="input" placeholder="分类ID" value={category} onChange={e=>setCategory(e.target.value)} disabled={!token} />
           <button className="btn primary" onClick={onCreate} disabled={!token}>添加</button>
         </section>
         <section className="list-panel" onScroll={onScroll}>
@@ -173,6 +191,7 @@ export default function App() {
                 <time className="timestamp">{new Date(t.createdAt).toLocaleString()}</time>
               </div>
               {t.description && <p className="desc">{t.description}</p>}
+              <div className="desc">分类: {t.categoryId || '—'} · 优先级: {t.priorityLabel || t.priorityScore || '—'}</div>
               <div className="card-actions">
                 <button className="btn" onClick={()=>onToggle(t.id, t.statusCode === 1)}>{t.statusCode === 1 ? '标记未完成' : '标记完成'}</button>
                 <button className="btn danger" onClick={()=>onDelete(t.id)}>回收站</button>

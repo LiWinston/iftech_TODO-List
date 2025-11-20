@@ -18,6 +18,9 @@ import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.Optional;
+import java.util.HashMap;
+import java.util.Map;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Component
 @EnableScheduling
@@ -32,6 +35,7 @@ public class Workers {
 
     private static final String DELETE_QUEUE = "tdl:todo:delete";
     private static final String EMBED_QUEUE = "tdl:todo:embed";
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     // Poll delete queue periodically and perform physical delete if still trashed
     @Scheduled(fixedDelay = 1000)
@@ -79,15 +83,15 @@ public class Workers {
                 var result = embeddingModel.embed(text);
                 Embedding embedding = result.content();
 
-                Metadata metadata = new Metadata();
-                metadata.put("userId", userId);
-                metadata.put("status", item.getStatus().name());
-                metadata.put("categoryId", item.getCategoryId());
-                metadata.put("priority", item.getPriorityLabel());
+                // build metadata JSON safely (skip nulls)
+                Map<String, Object> md = new HashMap<>();
+                md.put("userId", userId);
+                md.put("status", item.getStatus() != null ? item.getStatus().name() : null);
+                if (item.getCategoryId() != null) md.put("categoryId", item.getCategoryId());
+                if (item.getPriorityLabel() != null) md.put("priority", item.getPriorityLabel());
 
-                // Update embedding/text/metadata into same row using native SQL to avoid accidental DELETE
                 String vecLiteral = toVectorLiteral(embedding.vectorAsList());
-                String mdJson = metadata.toMap().toString().replace('=', ':');
+                String mdJson = MAPPER.writeValueAsString(md);
                 repo.updateEmbedding(id, userId, vecLiteral, text, mdJson);
             } catch (Exception e) {
                 log.warn("Failed processing embed job {}", job, e);
