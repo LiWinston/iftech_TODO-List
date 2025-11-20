@@ -16,7 +16,7 @@ import javax.sql.DataSource;
 
 // NOTE: The concrete AllMiniLmL6V2EmbeddingModel class is provided by
 // langchain4j-embeddings-all-minilm-l6-v2 artifact.
-import dev.langchain4j.model.embedding.AllMiniLmL6V2EmbeddingModel;
+import dev.langchain4j.model.embedding.onnx.allminilml6v2.AllMiniLmL6V2EmbeddingModel;
 
 @Configuration
 public class AppConfig {
@@ -70,7 +70,7 @@ public class AppConfig {
     @Bean
     public EmbeddingModel embeddingModel() {
         // Loads ONNX model in memory; by default uses CPU.
-        return AllMiniLmL6V2EmbeddingModel.builder().build();
+        return new AllMiniLmL6V2EmbeddingModel();
     }
 
     @Bean
