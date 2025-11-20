@@ -62,8 +62,26 @@ public class AppConfig {
         if (password != null && !password.isEmpty()) {
             single.setPassword(password);
         }
-        // TLS is auto with rediss://
+        // TLS is auto with rediss://. Some managed Redis providers may present a certificate
+        // that fails endpoint identification; if you keep seeing SslHandshakeTimeoutException,
+        // try setting endpoint identification to false (leaves hostname verification off).
         single.setSslEnableEndpointIdentification(true);
+
+        // Connection tuning: reduce initial idle requirement so startup doesn't block
+        // when provider limits parallel TLS handshakes.
+        single.setConnectionMinimumIdleSize(2); // default 24
+        single.setConnectionPoolSize(8);        // default 64
+        // Timeouts (ms)
+        single.setConnectTimeout(15000);        // default 10000
+        single.setTimeout(20000);               // command timeout
+        single.setRetryAttempts(3);
+        single.setRetryInterval(2000);
+        // TCP tweaks
+        single.setKeepAlive(true);
+        single.setTcpNoDelay(true);
+
+        // OPTIONAL: uncomment to disable endpoint identification if cert mismatch persists
+        // single.setSslEnableEndpointIdentification(false);
 
         return Redisson.create(config);
     }
