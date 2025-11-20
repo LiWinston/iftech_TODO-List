@@ -31,6 +31,9 @@ export default function App() {
   const [prioScore, setPrioScore] = useState<string>('0')
   const [prioLabel, setPrioLabel] = useState<string>('')
   const [category, setCategory] = useState<string>('')
+  const [showTrash, setShowTrash] = useState(false)
+  const [trash, setTrash] = useState<Todo[]>([])
+  const [loadingTrash, setLoadingTrash] = useState(false)
 
   const size = useRef(20)
   const lastScrollTs = useRef<number>(Date.now())
@@ -129,8 +132,10 @@ export default function App() {
       await fetchJson(`/api/todos/${id}/trash`, { method: 'POST' }, true)
       setTodos(prev => prev.filter(t => t.id !== id))
       if (view === 'search') setSearchResults(prev => prev.filter(t => t.id !== id))
+      // 如果回收站已打开，刷新
+      if (showTrash) loadTrash()
     } catch (e) { console.warn(e) }
-  }, [fetchJson, view])
+  }, [fetchJson, view, showTrash])
 
   const onToggle = useCallback(async (id: string, completed: boolean) => {
     try {
@@ -159,11 +164,41 @@ export default function App() {
 
   const list = view === 'list' ? todos : searchResults
 
+  const loadTrash = useCallback(async () => {
+    setLoadingTrash(true)
+    try {
+      const data = await fetchJson('/api/todos?status=TRASHED&size=200') as Todo[]
+      setTrash(data)
+    } catch (e) { console.warn(e) }
+    finally { setLoadingTrash(false) }
+  }, [fetchJson])
+
+  const onRestore = useCallback(async (id: string) => {
+    try {
+      await fetchJson(`/api/todos/${id}/restore`, { method: 'POST' }, true)
+      setTrash(prev => prev.filter(t => t.id !== id))
+      // 恢复后重新插入主列表顶部（不保证原排序位置）
+      const found = trash.find(t => t.id === id)
+      if (found) setTodos(prev => [ { ...found, statusCode: 0 }, ...prev ])
+    } catch (e) { console.warn(e) }
+  }, [fetchJson, trash])
+
+  const onPurge = useCallback(async (id: string) => {
+    if (!window.confirm('确定要彻底删除该任务吗？此操作不可恢复。')) return
+    try {
+      await fetchJson(`/api/todos/${id}/purge`, { method: 'POST' }, true)
+      setTrash(prev => prev.filter(t => t.id !== id))
+    } catch (e) { console.warn(e) }
+  }, [fetchJson])
+
+  useEffect(() => { if (showTrash) loadTrash() }, [showTrash, loadTrash])
+
   return (
     <div className="app-shell">
       <LoginModal />
       <header className="app-header">
         <div className="brand">📝 TODO List</div>
+        <button className="btn outline" onClick={()=>setShowTrash(true)}>垃圾桶 ({trash.length})</button>
         <div className="search-bar">
           <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="搜索 (关键词 / 语义)" />
           <button className="btn" onClick={doSearch} disabled={searching}>{searching ? '搜索中...' : '搜索'}</button>
@@ -210,6 +245,34 @@ export default function App() {
         </section>
       </main>
       <footer className="app-footer">{token? '已登录，可写操作' : '未登录，只读模式'} · Keyset + 动态分页 · Hybrid 搜索</footer>
+      {showTrash && (
+        <div className="modal-backdrop" onClick={()=>setShowTrash(false)}>
+          <div className="modal" onClick={e=>e.stopPropagation()}>
+            <div className="modal-head">
+              <h2>回收站</h2>
+              <button className="btn subtle" onClick={()=>{ setShowTrash(false) }}>关闭</button>
+            </div>
+            <div className="modal-body">
+              {loadingTrash && <div className="loading">加载中...</div>}
+              {!loadingTrash && trash.length===0 && <div className="empty">暂无已删除任务</div>}
+              {!loadingTrash && trash.map(t => (
+                <div key={t.id} className="card trash-item">
+                  <div className="card-head">
+                    <h3 className="title">{t.title}</h3>
+                    <time className="timestamp">{new Date(t.createdAt).toLocaleString()}</time>
+                  </div>
+                  {t.description && <p className="desc">{t.description}</p>}
+                  <div className="desc">分类: {t.categoryId || '—'} · 优先级: {t.priorityLabel || t.priorityScore || '—'}</div>
+                  <div className="card-actions">
+                    <button className="btn" onClick={()=>onRestore(t.id)}>恢复</button>
+                    <button className="btn danger" onClick={()=>onPurge(t.id)}>彻底删除</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
