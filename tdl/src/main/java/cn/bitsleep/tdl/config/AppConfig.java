@@ -98,16 +98,16 @@ public class AppConfig {
         // Important: the table must contain at least columns expected by PgVectorEmbeddingStore:
         // id (TEXT/UUID-as-text), embedding (vector(dimension)), text (TEXT), metadata (JSON/JSONB).
         // We disable createTable because JPA will manage DDL.
-    return PgVectorEmbeddingStore.datasourceBuilder()
-        .datasource(dataSource)
+        return PgVectorEmbeddingStore.datasourceBuilder()
+                .datasource(dataSource)
                 .table("todo_item")
                 .dimension(model.dimension())
                 .createTable(false)
-        .metadataStorageConfig(
-            DefaultMetadataStorageConfig.builder()
-                .storageMode(MetadataStorageMode.COMBINED_JSONB)
-                .build()
-        )
+                .metadataStorageConfig(
+                        DefaultMetadataStorageConfig.builder()
+                                .storageMode(MetadataStorageMode.COMBINED_JSONB)
+                                .build()
+                )
                 .build();
     }
 }
