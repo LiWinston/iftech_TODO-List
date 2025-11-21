@@ -41,6 +41,9 @@ public class TodoItem {
     @Column(name = "category_id")
     private String categoryId;
 
+    @Column(name = "priority_level_id")
+    private String priorityLevelId; // 规范化优先级引用，新设计下推荐使用
+
     @Column(name = "status", nullable = false)
     private Integer statusCode; // map enum manually
 

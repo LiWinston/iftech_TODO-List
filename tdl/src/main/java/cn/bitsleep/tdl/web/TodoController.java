@@ -48,20 +48,26 @@ public class TodoController {
             @RequestParam(required = false) Instant cursorCreatedAt,
             @RequestParam(required = false) String cursorId,
             @RequestParam(defaultValue = "20") @Min(1) @Max(200) int size,
-            @RequestParam(required = false) String status // CSV of ACTIVE,COMPLETED,TRASHED
+            @RequestParam(required = false) String status, // CSV of ACTIVE,COMPLETED,TRASHED
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order, // 预留（当前仅支持 DESC）
+            @RequestParam(required = false) String priorityLevelId,
+            @RequestParam(required = false) String categoryId,
+            @RequestParam(required = false) String tags // CSV tag ids
     ) {
         String userId = userIdOrDefault(userHeader);
         List<TodoStatus> statuses = (status == null || status.isBlank()) ?
                 List.of(TodoStatus.ACTIVE, TodoStatus.COMPLETED) :
                 Arrays.stream(status.split(",")).map(String::trim).map(TodoStatus::valueOf).toList();
-        return service.list(userId, statuses, cursorCreatedAt, cursorId, size);
+        List<String> tagIds = (tags == null || tags.isBlank()) ? null : Arrays.stream(tags.split(",")).map(String::trim).filter(s->!s.isEmpty()).toList();
+        return service.list(userId, statuses, cursorCreatedAt, cursorId, size, sort, priorityLevelId, categoryId, tagIds);
     }
 
     @PostMapping
     public TodoItem create(@RequestHeader(value = "X-User-ID", required = false) String userHeader,
                            @RequestBody CreateTodo req) {
         String userId = userIdOrDefault(userHeader);
-        return service.create(userId, req.title, req.description, req.priorityScore, req.priorityLabel, req.categoryId);
+        return service.create(userId, req.title, req.description, req.priorityScore, req.priorityLabel, req.categoryId, req.priorityLevelId, req.tagIds);
     }
 
     @GetMapping("/search")
@@ -77,7 +83,7 @@ public class TodoController {
                                     @PathVariable String id,
                                     @RequestBody UpdateTodo req) {
         String userId = userIdOrDefault(userHeader);
-        service.updateContent(id, userId, req.title, req.description, req.priorityScore, req.priorityLabel, req.categoryId);
+        service.updateContent(id, userId, req.title, req.description, req.priorityScore, req.priorityLabel, req.categoryId, req.priorityLevelId, req.tagIds);
         return ResponseEntity.ok(Map.of("id", id));
     }
 
@@ -139,6 +145,8 @@ public class TodoController {
         public BigDecimal priorityScore;
         public String priorityLabel;
         public String categoryId;
+        public String priorityLevelId;
+        public java.util.List<String> tagIds;
     }
 
     @Data
@@ -148,5 +156,7 @@ public class TodoController {
         public BigDecimal priorityScore;
         public String priorityLabel;
         public String categoryId;
+        public String priorityLevelId;
+        public java.util.List<String> tagIds;
     }
 }

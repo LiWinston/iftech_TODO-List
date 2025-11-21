@@ -44,6 +44,43 @@ public interface TodoItemRepository extends JpaRepository<TodoItem, String> {
                              @Param("statusCodes") Short[] statusCodes,
                              @Param("size") int size);
 
+                // 高级过滤（不做 keyset，面向带筛选/排序场景；数据量大场景可进一步优化为 keyset + 动态 SQL）
+                @Query(value = """
+                                                SELECT DISTINCT ti.* FROM todo_item ti
+                                                LEFT JOIN todo_tag tt ON tt.todo_id = ti.id
+                                                WHERE ti.user_id = :userId
+                                                        AND ti.status = ANY(:statusCodes)
+                                                        AND ( :priorityLevelId IS NULL OR ti.priority_level_id = :priorityLevelId )
+                                                        AND ( :categoryId IS NULL OR ti.category_id = :categoryId )
+                                                        AND ( :tagsCsv IS NULL OR tt.tag_id = ANY ( string_to_array(:tagsCsv, ',') ) )
+                                                ORDER BY ti.created_at DESC, ti.id DESC
+                                                LIMIT :size
+                                                """, nativeQuery = true)
+                List<TodoItem> filterCreatedDesc(@Param("userId") String userId,
+                                                                                                                                                 @Param("statusCodes") Short[] statusCodes,
+                                                                                                                                                 @Param("priorityLevelId") String priorityLevelId,
+                                                                                                                                                 @Param("categoryId") String categoryId,
+                                                                                                                                                 @Param("tagsCsv") String tagsCsv,
+                                                                                                                                                 @Param("size") int size);
+
+                @Query(value = """
+                                                SELECT DISTINCT ti.* FROM todo_item ti
+                                                LEFT JOIN todo_tag tt ON tt.todo_id = ti.id
+                                                WHERE ti.user_id = :userId
+                                                        AND ti.status = ANY(:statusCodes)
+                                                        AND ( :priorityLevelId IS NULL OR ti.priority_level_id = :priorityLevelId )
+                                                        AND ( :categoryId IS NULL OR ti.category_id = :categoryId )
+                                                        AND ( :tagsCsv IS NULL OR tt.tag_id = ANY ( string_to_array(:tagsCsv, ',') ) )
+                                                ORDER BY ti.priority_score DESC, ti.id DESC
+                                                LIMIT :size
+                                                """, nativeQuery = true)
+                List<TodoItem> filterPriorityDesc(@Param("userId") String userId,
+                                                                                                                                                        @Param("statusCodes") Short[] statusCodes,
+                                                                                                                                                        @Param("priorityLevelId") String priorityLevelId,
+                                                                                                                                                        @Param("categoryId") String categoryId,
+                                                                                                                                                        @Param("tagsCsv") String tagsCsv,
+                                                                                                                                                        @Param("size") int size);
+
     @Modifying
     @Query(value = """
             UPDATE todo_item
@@ -70,6 +107,7 @@ public interface TodoItemRepository extends JpaRepository<TodoItem, String> {
               priority_score = :priorityScore,
               priority_label = :priorityLabel,
               category_id = :categoryId,
+              priority_level_id = :priorityLevelId,
               text = :text,
               metadata = CAST(:metadata AS jsonb),
               version = version + 1
@@ -83,6 +121,7 @@ public interface TodoItemRepository extends JpaRepository<TodoItem, String> {
                       @Param("priorityScore") BigDecimal priorityScore,
                       @Param("priorityLabel") String priorityLabel,
                       @Param("categoryId") String categoryId,
+                      @Param("priorityLevelId") String priorityLevelId,
                       @Param("text") String text,
                       @Param("metadata") String metadata);
 

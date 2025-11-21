@@ -34,6 +34,14 @@ export default function App() {
   const [showTrash, setShowTrash] = useState(false)
   const [trash, setTrash] = useState<Todo[]>([])
   const [loadingTrash, setLoadingTrash] = useState(false)
+  // ===== 用户级配置（优先级层级、分类、标签）及筛选排序 =====
+  const [priorityLevels, setPriorityLevels] = useState<{id:string; name:string}[]>([])
+  const [categories, setCategories] = useState<{id:string; name:string}[]>([])
+  const [tags, setTags] = useState<{id:string; name:string}[]>([])
+  const [selectedPriorityLevel, setSelectedPriorityLevel] = useState<string>('')
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [sortField, setSortField] = useState<'created'|'priority'>('created')
+  const [sortOrder, setSortOrder] = useState<'desc'|'asc'>('desc')
 
   const size = useRef(20)
   const lastScrollTs = useRef<number>(Date.now())
@@ -79,6 +87,10 @@ export default function App() {
       params.set('size', String(size.current))
       if (cursor.current.createdAt) params.set('cursorCreatedAt', cursor.current.createdAt)
       if (cursor.current.id) params.set('cursorId', cursor.current.id)
+      params.set('sort', sortField)
+      params.set('order', sortOrder)
+      if (selectedPriorityLevel) params.set('priorityLevelId', selectedPriorityLevel)
+      if (selectedTags.length) params.set('tags', selectedTags.join(','))
       const data: Todo[] = await fetchJson(`/api/todos?${params.toString()}`)
       // 去重合并：避免在开发模式（React StrictMode）或偶发重复请求时列表重复展示
       setTodos(prev => {
@@ -96,7 +108,7 @@ export default function App() {
       }
     } catch (e) { console.warn(e) }
     finally { setLoading(false) }
-  }, [loading, hasMore, view, fetchJson])
+  }, [loading, hasMore, view, fetchJson, sortField, sortOrder, selectedPriorityLevel, selectedTags])
 
   useEffect(() => { loadMore() }, [view])
 
@@ -114,7 +126,9 @@ export default function App() {
       description: desc || null,
       priorityScore: prioScore ? Number(prioScore) : 0,
       priorityLabel: prioLabel || null,
-      categoryId: category || null
+      categoryId: category || null,
+      priorityLevelId: selectedPriorityLevel || null,
+      tagIds: selectedTags
     }
     try {
       const created = await fetchJson('/api/todos', { method: 'POST', body: JSON.stringify(body) }, true) as Todo
@@ -124,8 +138,10 @@ export default function App() {
       setPrioScore('0')
       setPrioLabel('')
       setCategory('')
+      setSelectedPriorityLevel('')
+      setSelectedTags([])
     } catch (e) { console.warn(e) }
-  }, [title, desc, todos, fetchJson])
+  }, [title, desc, todos, fetchJson, prioScore, prioLabel, category, selectedPriorityLevel, selectedTags])
 
   const onDelete = useCallback(async (id: string) => {
     try {
@@ -160,7 +176,29 @@ export default function App() {
     setSearchQ('')
     setView('list')
     setSearchResults([])
-  }, [])
+    // 重置分页游标与列表，避免继续使用旧 cursor 导致空结果
+    cursor.current = {}
+    setTodos([])
+    setHasMore(true)
+    setTimeout(()=>{ loadMore() },0)
+  }, [loadMore])
+
+  // 加载用户配置（优先级层级、分类、标签）
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const [pls, cats, tgs] = await Promise.all([
+          fetchJson('/api/config/priority-levels'),
+          fetchJson('/api/config/categories'),
+          fetchJson('/api/config/tags')
+        ])
+        setPriorityLevels(pls as any)
+        setCategories(cats as any)
+        setTags(tgs as any)
+      } catch (e) { console.warn(e) }
+    }
+    loadConfig()
+  }, [token, fetchJson])
 
   const list = view === 'list' ? todos : searchResults
 
@@ -222,6 +260,32 @@ export default function App() {
           <input className="input" placeholder="优先级分数(0~..)" value={prioScore} onChange={e=>setPrioScore(e.target.value)} disabled={!token} />
           <input className="input" placeholder="优先级标签(如 High/Low)" value={prioLabel} onChange={e=>setPrioLabel(e.target.value)} disabled={!token} />
           <input className="input" placeholder="分类ID" value={category} onChange={e=>setCategory(e.target.value)} disabled={!token} />
+          <select className="input" value={selectedPriorityLevel} onChange={e=>setSelectedPriorityLevel(e.target.value)} disabled={!token}>
+            <option value="">选择优先级层级</option>
+            {priorityLevels.map(pl => <option key={pl.id} value={pl.id}>{pl.name}</option>)}
+          </select>
+          <div className="tags-select" style={{display:'flex', flexWrap:'wrap'}}>
+            {tags.map(tag => {
+              const checked = selectedTags.includes(tag.id)
+              return (
+                <label key={tag.id} style={{marginRight:'8px', fontSize:'12px'}}>
+                  <input type="checkbox" checked={checked} onChange={()=>{
+                    setSelectedTags(prev => checked ? prev.filter(i=>i!==tag.id) : [...prev, tag.id])
+                  }} /> {tag.name}
+                </label>
+              )
+            })}
+          </div>
+          <div className="sort-controls" style={{display:'flex', gap:'8px'}}>
+            <select value={sortField} onChange={e=>{setSortField(e.target.value as any); cursor.current={}; setTodos([]); setHasMore(true); loadMore();}} disabled={!token}>
+              <option value="created">按创建时间</option>
+              <option value="priority">按优先级</option>
+            </select>
+            <select value={sortOrder} onChange={e=>{setSortOrder(e.target.value as any); cursor.current={}; setTodos([]); setHasMore(true); loadMore();}} disabled={!token}>
+              <option value="desc">倒序</option>
+              <option value="asc">正序</option>
+            </select>
+          </div>
           <button className="btn primary" onClick={onCreate} disabled={!token}>添加</button>
         </section>
         <section className="list-panel" onScroll={onScroll}>

@@ -30,6 +30,7 @@ public class TodoService {
     private final RedissonClient redissonClient;
     private final EmbeddingModel embeddingModel;
     private final EmbeddingStore<TextSegment> embeddingStore;
+    private final TagService tagService;
 
     @Value("${tdl.delete.delay-seconds:604800}")
     private long deleteDelaySeconds;
@@ -37,8 +38,21 @@ public class TodoService {
     private static final String DELETE_QUEUE = "tdl:todo:delete";
     private static final String EMBED_QUEUE = "tdl:todo:embed";
 
-    public List<TodoItem> list(String userId, List<TodoStatus> statuses, Instant cursorCreatedAt, String cursorId, int size) {
+    public List<TodoItem> list(String userId, List<TodoStatus> statuses, Instant cursorCreatedAt, String cursorId, int size,
+                               String sort, String priorityLevelId, String categoryId, java.util.List<String> tagIds) {
         Short[] codes = statuses.stream().map(s -> (short) s.code).toArray(Short[]::new);
+        boolean hasFilters = (priorityLevelId != null && !priorityLevelId.isBlank())
+                || (categoryId != null && !categoryId.isBlank())
+                || (tagIds != null && !tagIds.isEmpty());
+        String tagsCsv = (tagIds == null || tagIds.isEmpty()) ? null : String.join(",", tagIds);
+        if (hasFilters || (sort != null && !sort.isBlank() && !"created".equals(sort))) {
+            // 使用简化高级过滤（暂不做 keyset）
+            if (sort == null || sort.isBlank() || "created".equals(sort)) {
+                return repo.filterCreatedDesc(userId, codes, priorityLevelId, categoryId, tagsCsv, size);
+            } else if ("priority".equals(sort)) {
+                return repo.filterPriorityDesc(userId, codes, priorityLevelId, categoryId, tagsCsv, size);
+            }
+        }
         if (cursorCreatedAt == null || cursorId == null) {
             return repo.firstPage(userId, codes, size);
         }
@@ -46,7 +60,7 @@ public class TodoService {
     }
 
     @Transactional
-    public TodoItem create(String userId, String title, String description, BigDecimal priorityScore, String priorityLabel, String categoryId) {
+    public TodoItem create(String userId, String title, String description, BigDecimal priorityScore, String priorityLabel, String categoryId, String priorityLevelId, java.util.List<String> tagIds) {
         TodoItem item = TodoItem.builder()
                 .id(UUID.randomUUID().toString())
                 .userId(userId)
@@ -55,20 +69,27 @@ public class TodoService {
                 .priorityScore(priorityScore == null ? BigDecimal.ZERO : priorityScore)
                 .priorityLabel(priorityLabel)
                 .categoryId(categoryId)
+                .priorityLevelId(priorityLevelId)
                 .statusCode(TodoStatus.ACTIVE.code)
                 .embeddingText(buildEmbeddingText(title, description))
                 .metadata("{}")
                 .build();
         repo.save(item);
+        if (tagIds != null && !tagIds.isEmpty()) {
+            tagService.setTagsForTodo(item.getId(), userId, tagIds);
+        }
         enqueueEmbeddingJob(item.getId(), userId);
         return item;
     }
 
     @Transactional
-    public void updateContent(String id, String userId, String title, String description, BigDecimal priorityScore, String priorityLabel, String categoryId) {
+    public void updateContent(String id, String userId, String title, String description, BigDecimal priorityScore, String priorityLabel, String categoryId, String priorityLevelId, java.util.List<String> tagIds) {
         String text = buildEmbeddingText(title, description);
         String metadata = "{" + "\"userId\":\"" + userId + "\"}";
-        repo.updateContent(id, userId, title, description, priorityScore, priorityLabel, categoryId, text, metadata);
+        repo.updateContent(id, userId, title, description, priorityScore, priorityLabel, categoryId, priorityLevelId, text, metadata);
+        if (tagIds != null) {
+            tagService.setTagsForTodo(id, userId, tagIds);
+        }
         enqueueEmbeddingJob(id, userId);
     }
 
