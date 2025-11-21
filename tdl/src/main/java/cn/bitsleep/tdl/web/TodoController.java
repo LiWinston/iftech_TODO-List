@@ -60,7 +60,7 @@ public class TodoController {
                 List.of(TodoStatus.ACTIVE, TodoStatus.COMPLETED) :
                 Arrays.stream(status.split(",")).map(String::trim).map(TodoStatus::valueOf).toList();
         List<String> tagIds = (tags == null || tags.isBlank()) ? null : Arrays.stream(tags.split(",")).map(String::trim).filter(s->!s.isEmpty()).toList();
-        return service.list(userId, statuses, cursorCreatedAt, cursorId, size, sort, priorityLevelId, categoryId, tagIds);
+        return service.list(userId, statuses, cursorCreatedAt, cursorId, size, sort, order, priorityLevelId, categoryId, tagIds);
     }
 
     @PostMapping

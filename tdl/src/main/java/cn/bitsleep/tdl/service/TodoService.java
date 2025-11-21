@@ -3,6 +3,9 @@ package cn.bitsleep.tdl.service;
 import cn.bitsleep.tdl.domain.TodoItem;
 import cn.bitsleep.tdl.domain.TodoStatus;
 import cn.bitsleep.tdl.repo.TodoItemRepository;
+import cn.bitsleep.tdl.repo.PriorityLevelRepository;
+import cn.bitsleep.tdl.repo.CategoryRepository;
+import cn.bitsleep.tdl.domain.Category;
 import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
@@ -31,6 +34,8 @@ public class TodoService {
     private final EmbeddingModel embeddingModel;
     private final EmbeddingStore<TextSegment> embeddingStore;
     private final TagService tagService;
+    private final PriorityLevelRepository priorityLevelRepository;
+    private final CategoryRepository categoryRepository;
 
     @Value("${tdl.delete.delay-seconds:604800}")
     private long deleteDelaySeconds;
@@ -39,36 +44,56 @@ public class TodoService {
     private static final String EMBED_QUEUE = "tdl:todo:embed";
 
     public List<TodoItem> list(String userId, List<TodoStatus> statuses, Instant cursorCreatedAt, String cursorId, int size,
-                               String sort, String priorityLevelId, String categoryId, java.util.List<String> tagIds) {
+                               String sort, String order, String priorityLevelId, String categoryId, java.util.List<String> tagIds) {
         Short[] codes = statuses.stream().map(s -> (short) s.code).toArray(Short[]::new);
         boolean hasFilters = (priorityLevelId != null && !priorityLevelId.isBlank())
                 || (categoryId != null && !categoryId.isBlank())
                 || (tagIds != null && !tagIds.isEmpty());
         String tagsCsv = (tagIds == null || tagIds.isEmpty()) ? null : String.join(",", tagIds);
+        boolean asc = "asc".equalsIgnoreCase(order);
         if (hasFilters || (sort != null && !sort.isBlank() && !"created".equals(sort))) {
-            // 使用简化高级过滤（暂不做 keyset）
             if (sort == null || sort.isBlank() || "created".equals(sort)) {
-                return repo.filterCreatedDesc(userId, codes, priorityLevelId, categoryId, tagsCsv, size);
+                return asc ? repo.filterCreatedAsc(userId, codes, priorityLevelId, categoryId, tagsCsv, size)
+                           : repo.filterCreatedDesc(userId, codes, priorityLevelId, categoryId, tagsCsv, size);
             } else if ("priority".equals(sort)) {
-                return repo.filterPriorityDesc(userId, codes, priorityLevelId, categoryId, tagsCsv, size);
+                return asc ? repo.filterPriorityAsc(userId, codes, priorityLevelId, categoryId, tagsCsv, size)
+                           : repo.filterPriorityDesc(userId, codes, priorityLevelId, categoryId, tagsCsv, size);
             }
         }
+        // 基础 keyset 分页（仅对 created 排序）
         if (cursorCreatedAt == null || cursorId == null) {
-            return repo.firstPage(userId, codes, size);
+            return asc ? repo.firstPageAsc(userId, codes, size) : repo.firstPage(userId, codes, size);
         }
-        return repo.keysetPage(userId, codes, cursorCreatedAt, cursorId, size);
+        return asc ? repo.keysetPageAsc(userId, codes, cursorCreatedAt, cursorId, size)
+                   : repo.keysetPage(userId, codes, cursorCreatedAt, cursorId, size);
     }
 
     @Transactional
     public TodoItem create(String userId, String title, String description, BigDecimal priorityScore, String priorityLabel, String categoryId, String priorityLevelId, java.util.List<String> tagIds) {
-        TodoItem item = TodoItem.builder()
+        // 若提供 priorityLevelId 则根据其 rank 派生 priorityScore（高优先级分数更大以便 DESC 排序）
+        if (priorityLevelId != null && !priorityLevelId.isBlank()) {
+            var plOpt = priorityLevelRepository.findById(priorityLevelId);
+            if (plOpt.isPresent() && userId.equals(plOpt.get().getUserId())) {
+                long rank = plOpt.get().getRank();
+                // 简单线性映射：score = MAX_BASE - rank
+                // MAX_BASE 取一个足够大的常量，避免出现负值并允许未来 rank 扩展
+                long MAX_BASE = 2_000_000_000L;
+                long derived = Math.max(1, MAX_BASE - rank);
+                priorityScore = BigDecimal.valueOf(derived);
+                if (priorityLabel == null || priorityLabel.isBlank()) {
+                    priorityLabel = plOpt.get().getName();
+                }
+            }
+        }
+    String resolvedCategoryId = resolveCategoryId(userId, categoryId);
+    TodoItem item = TodoItem.builder()
                 .id(UUID.randomUUID().toString())
                 .userId(userId)
                 .title(title)
                 .description(description)
                 .priorityScore(priorityScore == null ? BigDecimal.ZERO : priorityScore)
                 .priorityLabel(priorityLabel)
-                .categoryId(categoryId)
+        .categoryId(resolvedCategoryId)
                 .priorityLevelId(priorityLevelId)
                 .statusCode(TodoStatus.ACTIVE.code)
                 .embeddingText(buildEmbeddingText(title, description))
@@ -86,7 +111,20 @@ public class TodoService {
     public void updateContent(String id, String userId, String title, String description, BigDecimal priorityScore, String priorityLabel, String categoryId, String priorityLevelId, java.util.List<String> tagIds) {
         String text = buildEmbeddingText(title, description);
         String metadata = "{" + "\"userId\":\"" + userId + "\"}";
-        repo.updateContent(id, userId, title, description, priorityScore, priorityLabel, categoryId, priorityLevelId, text, metadata);
+        if (priorityLevelId != null && !priorityLevelId.isBlank()) {
+            var plOpt = priorityLevelRepository.findById(priorityLevelId);
+            if (plOpt.isPresent() && userId.equals(plOpt.get().getUserId())) {
+                long rank = plOpt.get().getRank();
+                long MAX_BASE = 2_000_000_000L;
+                long derived = Math.max(1, MAX_BASE - rank);
+                priorityScore = BigDecimal.valueOf(derived);
+                if (priorityLabel == null || priorityLabel.isBlank()) {
+                    priorityLabel = plOpt.get().getName();
+                }
+            }
+        }
+        String resolvedCategoryId = resolveCategoryId(userId, categoryId);
+        repo.updateContent(id, userId, title, description, priorityScore, priorityLabel, resolvedCategoryId, priorityLevelId, text, metadata);
         if (tagIds != null) {
             tagService.setTagsForTodo(id, userId, tagIds);
         }
@@ -145,6 +183,25 @@ public class TodoService {
 
     private String buildEmbeddingText(String title, String description) {
         return (title == null ? "" : title) + "\n" + (description == null ? "" : description);
+    }
+
+    // 将前端传来的 categoryId 进行解析：若像 UUID 则直接返回；否则视为名称，查找或创建后返回其 id
+    private String resolveCategoryId(String userId, String categoryIdOrName) {
+        if (categoryIdOrName == null || categoryIdOrName.isBlank()) return null;
+        String c = categoryIdOrName.trim();
+        boolean looksUuid = c.length() == 36 && c.chars().filter(ch -> ch == '-').count() == 4;
+        if (looksUuid) return c; // 认为是已有的 id
+        // 按名称查找或创建
+        var opt = categoryRepository.findByUserIdAndName(userId, c);
+        if (opt.isPresent()) return opt.get().getId();
+        Category created = Category.builder()
+                .id(UUID.randomUUID().toString())
+                .userId(userId)
+                .name(c)
+                .color(null)
+                .build();
+        categoryRepository.save(created);
+        return created.getId();
     }
 
     public List<TodoItem> hybridSearch(String userId, String query, int k) {
