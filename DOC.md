@@ -3,6 +3,18 @@
 ## 目标与范围
 实现一个前后端分离的 TODO List，完整覆盖“必须完成功能 + 基础扩展功能”，并选择“Hybrid 搜索”作为进阶特性。
 
+## 技术选型简述（Why This Stack）
+1. 后端 Java (JDK 17 + Spring Boot): 企业级成熟生态（事务、数据访问、安全、调度）+ LangChain4j 与 pgvector 已有稳定集成；JDK 17 LTS 保证长期维护与良好性能（G1, ZGC 可选）。
+2. 前端 TypeScript (React + Vite): TS 提供强类型契约与后端 DTO 对齐，Vite 热更新与构建极快，组件生态成熟，易于后续扩展实时/协同功能。
+3. PostgreSQL: 在小中规模数据下向量检索性能与专门向量库（Milvus/FAISS）差距可忽略；pgvector + pg_trgm 扩展一库即享结构化 + 向量 + 文本模糊检索；同表存储 embedding 降低一致性与运维复杂度（无需双写/跨库事务）。
+4. Redis (Redisson): 轻量多形态（KV、List、PubSub、延迟队列）一体化；RDelayedQueue 实现软删除延迟 Purge 与异步 embedding 任务，无需引入更重消息中间件；后续可平滑升级到 Redis Cluster。
+5. Hybrid 搜索策略: 将 PG 自带 pgvector 余弦相似 + pg_trgm 文本相似加权融合（0.6 / 0.4），避免仅向量导致的“语义漂移”与仅关键词的“召回不足”，保持简洁部署（单库）。
+6. Keyset 分页: 在时间序排序下避免 OFFSET 深分页扫描；使用 (created_at DESC, id DESC) 做稳定游标，兼容并发插入且自然支持无限滚动。
+7. 同表 Embedding 更新: 用原子 UPDATE 而不是 INSERT/DELETE，防止误删业务行；ACID 保证“业务内容与其 embedding 对应版本一致”。
+8. 简易 JWT + Header 透传: Demo 场景下轻量，无需外部 IdP；后续可替换成 OAuth2/OpenID Provider 仅调整 SecurityConfig。
+9. 原生 SQL + JPA 组合: JPA 管理实体生命周期；性能/特性关键路径（分页、搜索、批量更新、embedding 写入）使用原生 SQL 精准控制。
+10. Jackson 统一 JSONB 序列化: 避免手写字符串易出转义/空值错误；与前端/外部服务保持一致格式。
+
 ## 关键需求澄清与落地
 1) 删除：采用软删除（TRASHED），入 Redisson 延时队列，到期后消费者检查状态仍为 TRASHED 才执行物理删除；期间可恢复/硬删。相关操作在事务中执行，实体含 `@Version`（可进一步扩展条件版本更新）。
 
